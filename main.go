@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"prolice-slack-bot/posts"
+	"prolice-slack-bot/types"
+
 	"github.com/joho/godotenv"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -35,7 +38,7 @@ func main() {
 		socketmode.OptionLog(log.New(os.Stdout, "socketmode: ", log.Lshortfile|log.LstdFlags)),
 	)
 
-	var currentPRs []PullRequest
+	var currentPRs []types.PullRequest
 
 	// Create a context that can be used to cancel goroutine
 	ctx, cancel := context.WithCancel(context.Background())
@@ -106,7 +109,7 @@ func main() {
 
 }
 
-func HandleEventMessage(event slackevents.EventsAPIEvent, client *slack.Client, currentPRs *[]PullRequest) error {
+func HandleEventMessage(event slackevents.EventsAPIEvent, client *slack.Client, currentPRs *[]types.PullRequest) error {
 	switch event.Type {
 	// First we check if this is an CallbackEvent
 	case slackevents.CallbackEvent:
@@ -133,7 +136,7 @@ func HandleEventMessage(event slackevents.EventsAPIEvent, client *slack.Client, 
 }
 
 // HandleAppMentionEventToBot is used to take care of the AppMentionEvent when the bot is mentioned
-func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slack.Client, currentPRs *[]PullRequest) error {
+func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slack.Client, currentPRs *[]types.PullRequest) error {
 
 	//TODO//
 	// Check the PR's we have and if they're still valid
@@ -163,14 +166,14 @@ func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slac
 
 		xurlsStrict := xurls.Strict()
 		prFromText := xurlsStrict.FindAllString(text, -1)
-		pr := PullRequest{user: fmt.Sprintf("%s %s", user.Profile.FirstName, user.Profile.LastName), prUrl: prFromText[len(prFromText)-1], posted: time.Now()}
+		pr := types.PullRequest{User: fmt.Sprintf("%s %s", user.Profile.FirstName, user.Profile.LastName), PrUrl: prFromText[len(prFromText)-1], Posted: time.Now()}
 
 		*currentPRs = append(*currentPRs, pr)
 
-		attachment.Text = fmt.Sprintf("PR: %s added", pr.prUrl)
+		attachment.Text = fmt.Sprintf("PR: %s added", pr.PrUrl)
 		attachment.Color = "#4af030"
 
-		PostMessage(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+		posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
 
 		client.PostMessage(event.Channel, slack.MsgOptionAttachments(attachment))
 	} else if strings.Contains(text, "list prs") {
@@ -178,9 +181,9 @@ func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slac
 
 		for _, pr := range *currentPRs {
 			//use attachment.Fields here
-			attachment.Text = fmt.Sprintf("\nUrl: %s", pr.prUrl)
-			attachment.Text += fmt.Sprintf("\nAuthor: %s", pr.user)
-			attachment.Text += fmt.Sprintf("\nPosted Date: %s", pr.posted)
+			attachment.Text = fmt.Sprintf("\nUrl: %s", pr.PrUrl)
+			attachment.Text += fmt.Sprintf("\nAuthor: %s", pr.User)
+			attachment.Text += fmt.Sprintf("\nPosted Date: %s", pr.Posted)
 
 			client.PostEphemeral(event.Channel, user.ID, slack.MsgOptionAttachments(attachment))
 		}
@@ -190,7 +193,7 @@ func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slac
 	} else if strings.Contains(text, "trigger") {
 
 		attachment.Text = "triggered"
-		PostMessage(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+		posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
 	} else {
 		// Send a message to the user
 		attachment.Text = fmt.Sprintf("I am good. How are you %s?", user.Name)
@@ -207,7 +210,7 @@ func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slac
 	return nil
 }
 
-func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, currentPRs *[]PullRequest) error {
+func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, currentPRs *[]types.PullRequest) error {
 
 	// Grab the user name based on the ID of the one who mentioned the bot
 	_, err := client.GetUserInfo(event.User)
@@ -234,22 +237,8 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 
 	// becareful for infinate loops here (bot triggering itself)
 	if time.Now().Hour() == 0 {
-		PostMessage(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+		posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
 	}
 
 	return nil
-}
-
-func PostMessage(f func(string, ...slack.MsgOption) (string, string, error), channelID string, options ...slack.MsgOption) {
-	_, _, err := f(channelID, options...)
-
-	if err != nil {
-		log.Fatal(fmt.Errorf("failed to post message: %w", err))
-	}
-}
-
-type PullRequest struct {
-	user   string
-	prUrl  string
-	posted time.Time
 }
