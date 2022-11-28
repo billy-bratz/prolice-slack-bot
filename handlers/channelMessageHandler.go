@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"fmt"
+	"os"
 	"prolice-slack-bot/posts"
 	"prolice-slack-bot/types"
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"mvdan.cc/xurls/v2"
@@ -14,6 +16,10 @@ import (
 
 func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, currentPRs *[]types.PullRequest) error {
 
+	godotenv.Load(".env")
+
+	matchingString := os.Getenv("MESSAGE_MATCHING_STR")
+	secondMatchingString := os.Getenv("MESSAGE_MATCHING_STR2")
 	// Grab the user name based on the ID of the one who mentioned the bot
 	user, err := client.GetUserInfo(event.User)
 	if err != nil {
@@ -34,8 +40,8 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 	// 	},
 	// }
 
-	if strings.Contains(text, "https://carvanadev.visualstudio.com/carvana.underwriting/") &&
-		strings.Contains(text, "pullrequest") {
+	if strings.Contains(text, matchingString) &&
+		strings.Contains(text, secondMatchingString) {
 
 		xurlsStrict := xurls.Strict()
 		prFromText := xurlsStrict.FindAllString(text, -1)
