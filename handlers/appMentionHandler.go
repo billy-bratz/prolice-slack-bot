@@ -2,11 +2,14 @@ package handlers
 
 import (
 	"fmt"
+	"prolice-slack-bot/extensions"
+	"prolice-slack-bot/gateways"
 	"prolice-slack-bot/types"
 	"strings"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
+	"mvdan.cc/xurls/v2"
 )
 
 // HandleAppMentionEventToBot is used to take care of the AppMentionEvent when the bot is mentioned
@@ -38,15 +41,44 @@ func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slac
 	// }
 	if strings.Contains(text, "list prs") {
 
-		for _, pr := range *currentPRs {
-			//use attachment.Fields here
-			attachment.Text = fmt.Sprintf("\nUrl: %s", pr.PrUrl)
-			attachment.Text += fmt.Sprintf("\nAuthor: %s", pr.User)
-			attachment.Text += fmt.Sprintf("\nPosted Date: %s", pr.Posted)
+		for i, pr := range *currentPRs {
+			prCheckResult := gateways.PullRequestById(pr.Id)
+
+			if !strings.EqualFold(prCheckResult.Status, "active") {
+				*currentPRs = append((*currentPRs)[:i], (*currentPRs)[i+1:]...)
+			} else {
+				reviewers := "Approvals: "
+				for _, r := range pr.Reviewers {
+					if r.Vote == 5 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
+						reviewers += fmt.Sprintf("%s approved with suggestions\n", r.DisplayName)
+					} else if r.Vote == 10 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
+						reviewers += fmt.Sprintf("%s approved\n", r.DisplayName)
+					}
+				}
+
+				if len(reviewers) < 13 {
+					reviewers += "None"
+				}
+				attachment.Text = fmt.Sprintf("\nUrl: %s", pr.PrUrl)
+				attachment.Text += fmt.Sprintf("\nAuthor: %s", pr.User)
+				attachment.Text += fmt.Sprintf("\nPosted Date: %s", pr.Posted)
+				attachment.Text += fmt.Sprintf("\n%s", reviewers)
+
+				if attachment.Text == "" {
+					attachment.Text = "No PRs"
+				}
+			}
 		}
+	} else if strings.Contains(text, "remove pr") {
+		xurlsStrict := xurls.Strict()
+		prMatch := xurlsStrict.FindAllString(text, -1)
+		prUrl := prMatch[len(prMatch)-1]
+
+		i := extensions.IndexOf(*currentPRs, func(pr types.PullRequest) bool { return pr.PrUrl == prUrl })
+		*currentPRs = append((*currentPRs)[:i], (*currentPRs)[i+1:]...)
+		attachment.Text = ("PR removed")
 	} else {
 		attachment.Text = fmt.Sprintf("Sorry %s, I do not know how to handle that request", user.Name)
-		// attachment.Pretext = "How can I be of service"
 	}
 
 	attachment.Color = "#4af030"

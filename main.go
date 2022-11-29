@@ -34,7 +34,7 @@ func main() {
 	)
 
 	var currentPRs []types.PullRequest
-
+	hasPosted := false
 	// Create a context that can be used to cancel goroutine
 	ctx, cancel := context.WithCancel(context.Background())
 	// Make this cancel called properly in a real program , graceful shutdown etc
@@ -68,7 +68,7 @@ func main() {
 
 					//------------------------------------
 					// Now we have an Events API event, but this event type can in turn be many types, so we actually need another type switch
-					err := handlers.HandleChannelMessage(eventsAPI, client, &currentPRs)
+					err := handlers.HandleChannelMessage(eventsAPI, client, &currentPRs, &hasPosted)
 					if err != nil {
 						// Replace with actual err handeling
 						log.Fatal(err)

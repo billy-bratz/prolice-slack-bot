@@ -8,7 +8,7 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
-func HandleChannelMessage(event slackevents.EventsAPIEvent, client *slack.Client, currentPRs *[]types.PullRequest) error {
+func HandleChannelMessage(event slackevents.EventsAPIEvent, client *slack.Client, currentPRs *[]types.PullRequest, hasPosted *bool) error {
 	switch event.Type {
 	// First we check if this is an CallbackEvent
 	case slackevents.CallbackEvent:
@@ -23,7 +23,7 @@ func HandleChannelMessage(event slackevents.EventsAPIEvent, client *slack.Client
 				return err
 			}
 		case *slackevents.MessageEvent:
-			err := HandleMessageEvent(ev, client, currentPRs)
+			err := HandleMessageEvent(ev, client, currentPRs, hasPosted)
 			if err != nil {
 				return err
 			}
