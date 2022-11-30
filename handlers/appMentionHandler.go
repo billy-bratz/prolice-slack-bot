@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"prolice-slack-bot/extensions"
 	"prolice-slack-bot/gateways"
+	"prolice-slack-bot/helpers"
 	"prolice-slack-bot/types"
 	"strings"
 
@@ -12,19 +13,20 @@ import (
 	"mvdan.cc/xurls/v2"
 )
 
+const listPrs = "list"
+const removePr = "remove"
+const emptyString = ""
+const MMDDYYY = "01-02-2006"
+
 // HandleAppMentionEventToBot is used to take care of the AppMentionEvent when the bot is mentioned
 func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slack.Client, currentPRs *[]types.PullRequest) error {
-
-	//TODO//
-	// Check the PR's we have and if they're still valid
-	// remove the ones that are not, schedule a message for the next one
 
 	// Grab the user name based on the ID of the one who mentioned the bot
 	user, err := client.GetUserInfo(event.User)
 	if err != nil {
 		return err
 	}
-	// Check if the user said Hello to the bot
+
 	text := strings.ToLower(event.Text)
 
 	// Create the attachment and assigned based on the message
@@ -39,50 +41,83 @@ func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slac
 	// 		Value: user.Name,
 	// 	},
 	// }
-	if strings.Contains(text, "list prs") {
-
+	switch {
+	case strings.Contains(text, listPrs):
 		for i, pr := range *currentPRs {
 			prCheckResult := gateways.PullRequestById(pr.Id)
 
-			if !strings.EqualFold(prCheckResult.Status, "active") {
-				*currentPRs = append((*currentPRs)[:i], (*currentPRs)[i+1:]...)
-			} else {
-				reviewers := "Approvals: "
-				for _, r := range pr.Reviewers {
-					if r.Vote == 5 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
-						reviewers += fmt.Sprintf("%s approved with suggestions\n", r.DisplayName)
-					} else if r.Vote == 10 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
-						reviewers += fmt.Sprintf("%s approved\n", r.DisplayName)
-					}
-				}
+			wasRemoved := helpers.RemoveInactivePrs(prCheckResult.Status, i, *&currentPRs)
 
-				if len(reviewers) < 13 {
-					reviewers += "None"
-				}
-				attachment.Text = fmt.Sprintf("\nUrl: %s", pr.PrUrl)
-				attachment.Text += fmt.Sprintf("\nAuthor: %s", pr.User)
-				attachment.Text += fmt.Sprintf("\nPosted Date: %s", pr.Posted)
-				attachment.Text += fmt.Sprintf("\n%s", reviewers)
-
-				if attachment.Text == "" {
-					attachment.Text = "No PRs"
-				}
+			if !wasRemoved {
+				attachment.Text += BuildPrList(pr)
 			}
 		}
-	} else if strings.Contains(text, "remove pr") {
+
+		if len(attachment.Text) == 0 {
+			attachment.Text = "No Pull Requests for review"
+		}
+
+	case strings.Contains(text, removePr):
 		xurlsStrict := xurls.Strict()
 		prMatch := xurlsStrict.FindAllString(text, -1)
-		prUrl := prMatch[len(prMatch)-1]
 
-		i := extensions.IndexOf(*currentPRs, func(pr types.PullRequest) bool { return pr.PrUrl == prUrl })
-		*currentPRs = append((*currentPRs)[:i], (*currentPRs)[i+1:]...)
-		attachment.Text = ("PR removed")
-	} else {
-		attachment.Text = fmt.Sprintf("Sorry %s, I do not know how to handle that request", user.Name)
+		if len(prMatch) == 0 {
+			attachment.Text = "Could not find URL in string please use the syntax remove (url)"
+		} else {
+			prUrl := prMatch[len(prMatch)-1]
+			i := extensions.IndexOf(*currentPRs, func(pr types.PullRequest) bool { return pr.PrUrl == prUrl })
+			if i == -1 {
+				attachment.Text = "Could not find matching Pull Request to remove.\n"
+				attachment.Text += "Use `@PRolice list` to see list of Pull Requests."
+			} else {
+				helpers.RemovePr(i, *&currentPRs)
+				attachment.Text = ("Pull Request removed")
+			}
+		}
+	default:
+		attachment.Text = fmt.Sprintf("Available Commands:\n")
+		attachment.Fields = []slack.AttachmentField{
+			{
+				Title: "List all Pull Requests",
+				Value: fmt.Sprintf("@PRolice %s", listPrs),
+			},
+			{
+				Title: "Remove Pull Request",
+				Value: fmt.Sprintf("@PRolice %s", removePr),
+			},
+		}
 	}
 
-	attachment.Color = "#4af030"
-	client.PostEphemeral(event.Channel, user.ID, slack.MsgOptionAttachments(attachment))
+	PostResponse(attachment, client, event, user)
 
 	return nil
+}
+
+func PostResponse(attachment slack.Attachment, client *slack.Client, event *slackevents.AppMentionEvent, user *slack.User) {
+	attachment.Color = "#4af030"
+	client.PostEphemeral(event.Channel, user.ID, slack.MsgOptionAttachments(attachment))
+}
+
+func BuildPrList(pullRequest types.PullRequest) string {
+	response := emptyString
+	reviewers := "Approvals: "
+
+	for _, r := range pullRequest.Reviewers {
+		if r.Vote == 5 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
+			reviewers += fmt.Sprintf("%s approved with suggestions\n", r.DisplayName)
+		} else if r.Vote == 10 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
+			reviewers += fmt.Sprintf("%s approved\n", r.DisplayName)
+		}
+	}
+
+	if len(reviewers) < 13 {
+		reviewers += "None"
+	}
+
+	response = fmt.Sprintf("\nUrl: %s", pullRequest.PrUrl)
+	response += fmt.Sprintf("\nAuthor: %s", pullRequest.User)
+	response += fmt.Sprintf("\nPosted Date: %s", pullRequest.Posted.Format(MMDDYYY))
+	response += fmt.Sprintf("\n%s ", reviewers)
+
+	return response
 }
