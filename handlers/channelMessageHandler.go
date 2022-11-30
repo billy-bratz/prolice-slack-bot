@@ -25,10 +25,10 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 	matchingString := os.Getenv("MESSAGE_MATCHING_STR")
 	secondMatchingString := os.Getenv("MESSAGE_MATCHING_STR2")
 	// Grab the user name based on the ID of the one who mentioned the bot
-	// user, err := client.GetUserInfo(event.User)
-	// if err != nil {
-	// 	return err
-	// }
+	user, err := client.GetUserInfo(event.User)
+	if err != nil {
+		return err
+	}
 
 	text := strings.ToLower(event.Text)
 
@@ -45,7 +45,8 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 	// }
 
 	if strings.Contains(text, matchingString) &&
-		strings.Contains(text, secondMatchingString) {
+		strings.Contains(text, secondMatchingString) &&
+		!strings.Contains(text, "remove") {
 
 		xurlsStrict := xurls.Strict()
 		prMatch := xurlsStrict.FindAllString(text, -1)
@@ -55,7 +56,12 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 		prId := r.FindString(prUrl)
 
 		if prId == "" {
-			log.Printf("could not parse id from url: %s", prUrl)
+			log.Printf("Could not parse id from url: %s", prUrl)
+
+			attachment.Text = fmt.Sprintf("Could not parse id from url: %s.\nTo track please ensure the pull request id is visible in plain text", prUrl)
+			attachment.Color = "#4af030"
+			client.PostEphemeral(event.Channel, user.ID, slack.MsgOptionAttachments(attachment))
+
 			return nil
 		}
 
@@ -65,23 +71,36 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 			})
 
 		if prExists {
-			log.Printf("PR: %s already exists", prUrl)
+			log.Printf("Pull Request already exists: %s", prUrl)
+
+			attachment.Text = fmt.Sprintf("Already tracking Pull Request: %s", prUrl)
+			attachment.Color = "#4af030"
+			client.PostEphemeral(event.Channel, user.ID, slack.MsgOptionAttachments(attachment))
+
 			return nil
 		}
 
 		pr := gateways.PullRequestById(prId)
 
-		if pr.IsDraft {
+		if pr.IsDraft || !strings.EqualFold(pr.Status, "active") {
+
+			log.Printf("Draft or Inactive Pull Request posted, %s", prUrl)
+
+			attachment.Text = fmt.Sprintf("Unable to track Pull Request: %s\nPull Requests must be active, and published", prUrl)
+			attachment.Color = "#4af030"
+			client.PostEphemeral(event.Channel, user.ID, slack.MsgOptionAttachments(attachment))
+
 			return nil
 		}
 
+		loc, _ := time.LoadLocation("America/Phoenix")
 		pr.PrUrl = prUrl
-		pr.Posted = time.Now()
+		pr.Posted = time.Now().In(loc)
 		pr.Id = prId
 
 		*currentPRs = append(*currentPRs, pr)
 
-		attachment.Text = fmt.Sprintf("PR: %s added\nUse @PRolice list prs to get a list of active PR's\n @PRolice remove pr {url} to remove a PR", pr.PrUrl)
+		attachment.Text = fmt.Sprintf("Now tracking Pull Request: %s", pr.PrUrl)
 		attachment.Color = "#4af030"
 
 		posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
