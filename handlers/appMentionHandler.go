@@ -16,10 +16,12 @@ import (
 const listPrs = "list"
 const removePr = "remove"
 const emptyString = ""
+const silence = "hush"
+const unmute = "unmute"
 const MMDDYYY = "01-02-2006"
 
 // HandleAppMentionEventToBot is used to take care of the AppMentionEvent when the bot is mentioned
-func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slack.Client, currentPRs *[]types.PullRequest) error {
+func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slack.Client, currentPRs *[]types.PullRequest, silenced *bool) error {
 
 	// Grab the user name based on the ID of the one who mentioned the bot
 	user, err := client.GetUserInfo(event.User)
@@ -71,9 +73,24 @@ func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slac
 				attachment.Text += "Use `@PRolice list` to see list of Pull Requests."
 			} else {
 				helpers.RemovePr(i, *&currentPRs)
-				attachment.Text = ("Pull Request removed")
+				attachment.Text = "Pull Request removed"
 			}
 		}
+	case strings.Contains(text, silence):
+
+		if *silenced {
+			attachment.Text = "already silenced do you wish to use unmute?"
+			PostResponse(attachment, client, event, user)
+		} else {
+			attachment.Text = "going dark"
+			PostResponse(attachment, client, event, user)
+			*silenced = true
+		}
+	case strings.Contains(text, unmute):
+		if *silenced {
+			attachment.Text = "unmuted"
+		}
+		*silenced = false
 	default:
 		attachment.Text = fmt.Sprintf("Available Commands:\n")
 		attachment.Fields = []slack.AttachmentField{
@@ -85,10 +102,16 @@ func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slac
 				Title: "Remove Pull Request",
 				Value: fmt.Sprintf("@PRolice %s", removePr),
 			},
+			{
+				Title: "Silence Chat notifications",
+				Value: fmt.Sprintf("@PRolice %s", silence),
+			},
 		}
 	}
 
-	PostResponse(attachment, client, event, user)
+	if !*silenced {
+		PostResponse(attachment, client, event, user)
+	}
 
 	return nil
 }
