@@ -18,7 +18,7 @@ import (
 	"mvdan.cc/xurls/v2"
 )
 
-func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, currentPRs *[]types.PullRequest, hasPosted *bool) error {
+func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, currentPRs *[]types.PullRequest, hasPosted *bool, silenced *bool) error {
 
 	godotenv.Load(".env")
 
@@ -60,7 +60,7 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 
 			attachment.Text = fmt.Sprintf("Could not parse id from url: %s.\nTo track please ensure the pull request id is visible in plain text", prUrl)
 			attachment.Color = "#4af030"
-			client.PostEphemeral(event.Channel, user.ID, slack.MsgOptionAttachments(attachment))
+			PostEphemeral(client, event.Channel, user.ID, *silenced, slack.MsgOptionAttachments(attachment))
 
 			return nil
 		}
@@ -75,7 +75,7 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 
 			attachment.Text = fmt.Sprintf("Already tracking Pull Request: %s", prUrl)
 			attachment.Color = "#4af030"
-			client.PostEphemeral(event.Channel, user.ID, slack.MsgOptionAttachments(attachment))
+			PostEphemeral(client, event.Channel, user.ID, *silenced, slack.MsgOptionAttachments(attachment))
 
 			return nil
 		}
@@ -88,7 +88,7 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 
 			attachment.Text = fmt.Sprintf("Unable to track Pull Request: %s\nPull Requests must be active, and published", prUrl)
 			attachment.Color = "#4af030"
-			client.PostEphemeral(event.Channel, user.ID, slack.MsgOptionAttachments(attachment))
+			PostEphemeral(client, event.Channel, user.ID, *silenced, slack.MsgOptionAttachments(attachment))
 
 			return nil
 		}
@@ -103,10 +103,12 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 		attachment.Text = fmt.Sprintf("Now tracking Pull Request: %s", pr.PrUrl)
 		attachment.Color = "#4af030"
 
-		posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+		if !*silenced {
+			posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+		}
 	}
 
-	if time.Now().Hour() == 9 || time.Now().Hour() == 12 || time.Now().Hour() == 15 {
+	if (time.Now().Hour() == 9 || time.Now().Hour() == 12 || time.Now().Hour() == 15) && !*silenced {
 
 		if !*hasPosted {
 
@@ -145,4 +147,10 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 	}
 
 	return nil
+}
+
+func PostEphemeral(client *slack.Client, channelId string, userId string, silenced bool, options slack.MsgOption) {
+	if !silenced {
+		client.PostEphemeral(channelId, userId, options)
+	}
 }

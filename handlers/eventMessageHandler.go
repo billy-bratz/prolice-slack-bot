@@ -8,7 +8,7 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
-func HandleChannelMessage(event slackevents.EventsAPIEvent, client *slack.Client, currentPRs *[]types.PullRequest, hasPosted *bool) error {
+func HandleChannelMessage(event slackevents.EventsAPIEvent, client *slack.Client, currentPRs *[]types.PullRequest, hasPosted *bool, silenced *bool) error {
 	switch event.Type {
 	// First we check if this is an CallbackEvent
 	case slackevents.CallbackEvent:
@@ -18,12 +18,12 @@ func HandleChannelMessage(event slackevents.EventsAPIEvent, client *slack.Client
 		switch ev := innerEvent.Data.(type) {
 		case *slackevents.AppMentionEvent:
 			// The application has been mentioned since this Event is a Mention event
-			err := HandleAppMentionEventToBot(ev, client, currentPRs)
+			err := HandleAppMentionEventToBot(ev, client, currentPRs, silenced)
 			if err != nil {
 				return err
 			}
 		case *slackevents.MessageEvent:
-			err := HandleMessageEvent(ev, client, currentPRs, hasPosted)
+			err := HandleMessageEvent(ev, client, currentPRs, hasPosted, silenced)
 			if err != nil {
 				return err
 			}
