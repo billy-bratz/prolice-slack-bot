@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"prolice-slack-bot/extensions"
 	"prolice-slack-bot/gateways"
 	"prolice-slack-bot/helpers"
@@ -26,7 +27,7 @@ func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slac
 	// Grab the user name based on the ID of the one who mentioned the bot
 	user, err := client.GetUserInfo(event.User)
 	if err != nil {
-		return err
+		log.Print(err)
 	}
 
 	text := strings.ToLower(event.Text)
