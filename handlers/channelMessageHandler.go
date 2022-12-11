@@ -21,13 +21,12 @@ import (
 func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, currentPRs *[]types.PullRequest, hasPosted *bool, silenced *bool) error {
 
 	godotenv.Load(".env")
-
 	matchingString := os.Getenv("MESSAGE_MATCHING_STR")
 	secondMatchingString := os.Getenv("MESSAGE_MATCHING_STR2")
 	// Grab the user name based on the ID of the one who mentioned the bot
 	user, err := client.GetUserInfo(event.User)
 	if err != nil {
-		return err
+		log.Print(err)
 	}
 
 	text := strings.ToLower(event.Text)
