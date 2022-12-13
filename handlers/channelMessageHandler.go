@@ -49,61 +49,62 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 
 		xurlsStrict := xurls.Strict()
 		prMatch := xurlsStrict.FindAllString(text, -1)
-		prUrl := prMatch[len(prMatch)-1]
 
-		r, _ := regexp.Compile("(\\d+)")
-		prId := r.FindString(prUrl)
+		attachment.Text = emptyString
 
-		if prId == "" {
-			log.Printf("Could not parse id from url: %s", prUrl)
+		blue := "#2500E0"
+		red := "#E31E33"
+		currentColor := red
 
-			attachment.Text = fmt.Sprintf("Could not parse id from url: %s.\nTo track please ensure the pull request id is visible in plain text", prUrl)
-			attachment.Color = "#4af030"
-			PostEphemeral(client, event.Channel, user.ID, *silenced, slack.MsgOptionAttachments(attachment))
+		for _, p := range prMatch {
 
-			return nil
-		}
+			r, _ := regexp.Compile("(\\d+)")
+			prId := r.FindString(p)
 
-		prExists := extensions.Contains(*currentPRs,
-			func(c types.PullRequest) bool {
-				return c.PrUrl == prUrl
-			})
+			if prId == "" {
+				continue
+			}
 
-		if prExists {
-			log.Printf("Pull Request already exists: %s", prUrl)
+			prExists := extensions.Contains(*currentPRs,
+				func(c types.PullRequest) bool {
+					return c.Id == prId
+				})
 
-			attachment.Text = fmt.Sprintf("Already tracking Pull Request: %s", prUrl)
-			attachment.Color = "#4af030"
-			PostEphemeral(client, event.Channel, user.ID, *silenced, slack.MsgOptionAttachments(attachment))
+			if prExists {
+				continue
+			}
 
-			return nil
-		}
+			pr := gateways.PullRequestById(prId)
 
-		pr := gateways.PullRequestById(prId)
+			if pr.IsDraft || !strings.EqualFold(pr.Status, "active") {
 
-		if pr.IsDraft || !strings.EqualFold(pr.Status, "active") {
+				log.Printf("Draft or Inactive Pull Request posted, %s\n", p)
 
-			log.Printf("Draft or Inactive Pull Request posted, %s", prUrl)
+				attachment.Text = fmt.Sprintf("Unable to track Pull Request: %s\nPull Requests must be active, and published\n", p)
+				attachment.Color = "#EED202"
+				PostEphemeral(client, event.Channel, user.ID, *silenced, slack.MsgOptionAttachments(attachment))
+				continue
+			}
 
-			attachment.Text = fmt.Sprintf("Unable to track Pull Request: %s\nPull Requests must be active, and published", prUrl)
-			attachment.Color = "#4af030"
-			PostEphemeral(client, event.Channel, user.ID, *silenced, slack.MsgOptionAttachments(attachment))
+			loc, _ := time.LoadLocation("America/Phoenix")
+			pr.PrUrl = p
+			pr.Posted = time.Now().In(loc)
+			pr.Id = prId
 
-			return nil
-		}
+			*currentPRs = append(*currentPRs, pr)
 
-		loc, _ := time.LoadLocation("America/Phoenix")
-		pr.PrUrl = prUrl
-		pr.Posted = time.Now().In(loc)
-		pr.Id = prId
+			attachment.Text = fmt.Sprintf("Now tracking Pull Request: %s\n", pr.PrUrl)
+			attachment.Color = currentColor
 
-		*currentPRs = append(*currentPRs, pr)
+			if !*silenced && len(attachment.Text) > 0 {
+				posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+			}
 
-		attachment.Text = fmt.Sprintf("Now tracking Pull Request: %s", pr.PrUrl)
-		attachment.Color = "#4af030"
-
-		if !*silenced {
-			posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+			if currentColor == red {
+				currentColor = blue
+			} else {
+				currentColor = red
+			}
 		}
 	}
 
@@ -111,8 +112,13 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 
 		if !*hasPosted {
 
+			blue := "#2500E0"
+			red := "#E31E33"
+			currentColor := red
+
 			for i, pr := range *currentPRs {
 				attachment.Text = ""
+				attachment.Color = currentColor
 				prCheckResult := gateways.PullRequestById(pr.Id)
 				log.Printf(prCheckResult.Status)
 				if !strings.EqualFold(prCheckResult.Status, "active") {
@@ -135,6 +141,12 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 
 					if attachment.Text != "" {
 						posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+					}
+
+					if currentColor == red {
+						currentColor = blue
+					} else {
+						currentColor = red
 					}
 				}
 			}
