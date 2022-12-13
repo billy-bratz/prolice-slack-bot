@@ -16,9 +16,9 @@ Only published (non drafts), and active (not complete or abandoned) pull request
 
 ### Mention commands (prefaced with @PRolice)
 
-list - Lists all Pull Requests currently being tracked
-remove (url) - removes pull request matching specified url from list of tracked pull requests
-(empty) - lists available commands
+- list - Lists all Pull Requests currently being tracked
+- remove (url) - removes pull request matching specified url from list of tracked pull requests
+- (empty) - lists available commands
 
 ## Updates
 ### 12/12/2020
