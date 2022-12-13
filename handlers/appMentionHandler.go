@@ -118,7 +118,7 @@ func HandleAppMentionEventToBot(event *slackevents.AppMentionEvent, client *slac
 }
 
 func PostResponse(attachment slack.Attachment, client *slack.Client, event *slackevents.AppMentionEvent, user *slack.User) {
-	attachment.Color = "#4af030"
+	attachment.Color = "#EED202"
 	client.PostEphemeral(event.Channel, user.ID, slack.MsgOptionAttachments(attachment))
 }
 
