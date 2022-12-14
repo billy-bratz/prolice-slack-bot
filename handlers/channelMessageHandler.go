@@ -23,6 +23,11 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 	godotenv.Load(".env")
 	matchingString := os.Getenv("MESSAGE_MATCHING_STR")
 	secondMatchingString := os.Getenv("MESSAGE_MATCHING_STR2")
+
+	blue := "#2500E0"
+	red := "#E31E33"
+	currentColor := red
+
 	// Grab the user name based on the ID of the one who mentioned the bot
 	user, err := client.GetUserInfo(event.User)
 	if err != nil {
@@ -52,11 +57,11 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 
 		attachment.Text = emptyString
 
-		blue := "#2500E0"
-		red := "#E31E33"
-		currentColor := red
-
 		for _, p := range prMatch {
+
+			if !strings.Contains(p, matchingString) {
+				continue
+			}
 
 			r, _ := regexp.Compile("(\\d+)")
 			prId := r.FindString(p)
@@ -112,42 +117,36 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 
 		if !*hasPosted {
 
-			blue := "#2500E0"
-			red := "#E31E33"
-			currentColor := red
-
 			for i, pr := range *currentPRs {
-				attachment.Text = ""
-				attachment.Color = currentColor
 				prCheckResult := gateways.PullRequestById(pr.Id)
 				log.Printf(prCheckResult.Status)
 				if !strings.EqualFold(prCheckResult.Status, "active") {
 					*currentPRs = append((*currentPRs)[:i], (*currentPRs)[i+1:]...)
+				}
+			}
+			for _, pr := range *currentPRs {
+				attachment.Text = ""
+				attachment.Color = currentColor
+
+				reviewers := "Approvals: "
+				for _, r := range pr.Reviewers {
+					if r.Vote == 5 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
+						reviewers += fmt.Sprintf("%s approved with suggestions\n", r.DisplayName)
+					} else if r.Vote == 10 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
+						reviewers += fmt.Sprintf("%s approved\n", r.DisplayName)
+					}
+				}
+				if len(reviewers) < 13 {
+					reviewers += "None"
+				}
+				attachment.Text += fmt.Sprintf("Uncompleted PR by: %s\nUrl: %s\n%s", pr.User, pr.PrUrl, reviewers)
+				if attachment.Text != "" {
+					posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+				}
+				if currentColor == red {
+					currentColor = blue
 				} else {
-					reviewers := "Approvals: "
-					for _, r := range pr.Reviewers {
-						if r.Vote == 5 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
-							reviewers += fmt.Sprintf("%s approved with suggestions\n", r.DisplayName)
-						} else if r.Vote == 10 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
-							reviewers += fmt.Sprintf("%s approved\n", r.DisplayName)
-						}
-					}
-
-					if len(reviewers) < 13 {
-						reviewers += "None"
-					}
-
-					attachment.Text += fmt.Sprintf("Uncompleted PR by: %s\nUrl: %s\n%s", pr.User, pr.PrUrl, reviewers)
-
-					if attachment.Text != "" {
-						posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
-					}
-
-					if currentColor == red {
-						currentColor = blue
-					} else {
-						currentColor = red
-					}
+					currentColor = red
 				}
 			}
 
