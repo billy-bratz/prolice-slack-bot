@@ -18,14 +18,20 @@ import (
 	"mvdan.cc/xurls/v2"
 )
 
+const (
+	morning = 9
+	noon    = 12
+	evening = 15
+	red     = "#E31E33"
+	blue    = "#2500E0"
+)
+
 func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, currentPRs *[]types.PullRequest, hasPosted *bool, silenced *bool) error {
 
 	godotenv.Load(".env")
 	matchingString := os.Getenv("MESSAGE_MATCHING_STR")
 	secondMatchingString := os.Getenv("MESSAGE_MATCHING_STR2")
 
-	blue := "#2500E0"
-	red := "#E31E33"
 	currentColor := red
 
 	// Grab the user name based on the ID of the one who mentioned the bot
@@ -113,48 +119,46 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 		}
 	}
 
-	if (time.Now().Hour() == 9 || time.Now().Hour() == 12 || time.Now().Hour() == 15) && !*silenced {
+	sendSlackNotifications(client, event, currentPRs, silenced, hasPosted)
 
-		if !*hasPosted {
-
-			for i, pr := range *currentPRs {
-				prCheckResult := gateways.PullRequestById(pr.Id)
-				log.Printf(prCheckResult.Status)
-				if !strings.EqualFold(prCheckResult.Status, "active") {
-					*currentPRs = append((*currentPRs)[:i], (*currentPRs)[i+1:]...)
-				}
-			}
-			for _, pr := range *currentPRs {
-				attachment.Text = ""
-				attachment.Color = currentColor
-
-				reviewers := "Approvals: "
-				for _, r := range pr.Reviewers {
-					if r.Vote == 5 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
-						reviewers += fmt.Sprintf("%s approved with suggestions\n", r.DisplayName)
-					} else if r.Vote == 10 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
-						reviewers += fmt.Sprintf("%s approved\n", r.DisplayName)
-					}
-				}
-				if len(reviewers) < 13 {
-					reviewers += "None"
-				}
-				attachment.Text += fmt.Sprintf("Uncompleted PR by: %s\nUrl: %s\n%s", pr.User, pr.PrUrl, reviewers)
-				if attachment.Text != "" {
-					posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
-				}
-				if currentColor == red {
-					currentColor = blue
-				} else {
-					currentColor = red
-				}
-			}
-
-			*hasPosted = true
-		}
-	} else {
-		*hasPosted = false
-	}
+	// if !*silenced && inNotificationTime() {
+	// 	if !*hasPosted {
+	// 		currentColor := red
+	// 		for i, pr := range *currentPRs {
+	// 			attachment.Text = ""
+	// 			attachment.Color = currentColor
+	// 			prCheckResult := gateways.PullRequestById(pr.Id)
+	// 			if !strings.EqualFold(prCheckResult.Status, "active") {
+	// 				// remove inactive PR from currentPRs slice
+	// 				*currentPRs = append((*currentPRs)[:i], (*currentPRs)[i+1:]...)
+	// 				continue
+	// 			}
+	// 			reviewers := "Approvals: "
+	// 			for _, r := range pr.Reviewers {
+	// 				if r.Vote == 5 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
+	// 					reviewers += fmt.Sprintf("%s approved with suggestions\n", r.DisplayName)
+	// 				} else if r.Vote == 10 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
+	// 					reviewers += fmt.Sprintf("%s approved\n", r.DisplayName)
+	// 				}
+	// 			}
+	// 			if len(reviewers) < 13 {
+	// 				reviewers += "None"
+	// 			}
+	// 			attachment.Text += fmt.Sprintf("Uncompleted PR by: %s\nUrl: %s\n%s", pr.User, pr.PrUrl, reviewers)
+	// 			if attachment.Text != "" {
+	// 				posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+	// 			}
+	// 			if currentColor == red {
+	// 				currentColor = blue
+	// 			} else {
+	// 				currentColor = red
+	// 			}
+	// 		}
+	// 		*hasPosted = true
+	// 	}
+	// } else {
+	// 	*hasPosted = false
+	// }
 
 	return nil
 }
@@ -162,5 +166,56 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 func PostEphemeral(client *slack.Client, channelId string, userId string, silenced bool, options slack.MsgOption) {
 	if !silenced {
 		client.PostEphemeral(channelId, userId, options)
+	}
+}
+
+func inNotificationTime() bool {
+	return time.Now().Hour() == morning || time.Now().Hour() == noon || time.Now().Hour() == evening
+}
+
+func sendSlackNotifications(client *slack.Client, event *slackevents.MessageEvent, currentPRs *[]types.PullRequest, silenced *bool, hasPosted *bool) {
+	if !*silenced && inNotificationTime() {
+		if !*hasPosted {
+			sendNotifications(client, event, currentPRs)
+			*hasPosted = true
+		}
+	} else {
+		*hasPosted = false
+	}
+}
+
+func sendNotifications(client *slack.Client, event *slackevents.MessageEvent, currentPRs *[]types.PullRequest) {
+	currentColor := red
+	attachment := slack.Attachment{}
+
+	for i, pr := range *currentPRs {
+		attachment.Text = ""
+		attachment.Color = currentColor
+		prCheckResult := gateways.PullRequestById(pr.Id)
+		if !strings.EqualFold(prCheckResult.Status, "active") {
+			// remove inactive PR from currentPRs slice
+			*currentPRs = append((*currentPRs)[:i], (*currentPRs)[i+1:]...)
+			continue // skip to next iteration
+		}
+		reviewers := "Approvals: "
+		for _, r := range pr.Reviewers {
+			if r.Vote == 5 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
+				reviewers += fmt.Sprintf("%s approved with suggestions\n", r.DisplayName)
+			} else if r.Vote == 10 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
+				reviewers += fmt.Sprintf("%s approved\n", r.DisplayName)
+			}
+		}
+		if len(reviewers) < 13 {
+			reviewers += "None"
+		}
+		attachment.Text += fmt.Sprintf("Uncompleted PR by: %s\nUrl: %s\n%s", pr.User, pr.PrUrl, reviewers)
+		if attachment.Text != "" {
+			posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
+		}
+		if currentColor == red {
+			currentColor = blue
+		} else {
+			currentColor = red
+		}
 	}
 }
