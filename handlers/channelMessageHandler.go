@@ -121,67 +121,7 @@ func HandleMessageEvent(event *slackevents.MessageEvent, client *slack.Client, c
 
 	sendSlackNotifications(client, event, currentPRs, silenced, hasPosted)
 
-	// if !*silenced && inNotificationTime() {
-	// 	if !*hasPosted {
-	// 		currentColor := red
-	// 		for i, pr := range *currentPRs {
-	// 			attachment.Text = ""
-	// 			attachment.Color = currentColor
-	// 			prCheckResult := gateways.PullRequestById(pr.Id)
-	// 			if !strings.EqualFold(prCheckResult.Status, "active") {
-	// 				// remove inactive PR from currentPRs slice
-	// 				*currentPRs = append((*currentPRs)[:i], (*currentPRs)[i+1:]...)
-	// 				continue
-	// 			}
-	// 			reviewers := "Approvals: "
-	// 			for _, r := range pr.Reviewers {
-	// 				if r.Vote == 5 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
-	// 					reviewers += fmt.Sprintf("%s approved with suggestions\n", r.DisplayName)
-	// 				} else if r.Vote == 10 && !strings.Contains(r.DisplayName, "[CarvanaDev]") {
-	// 					reviewers += fmt.Sprintf("%s approved\n", r.DisplayName)
-	// 				}
-	// 			}
-	// 			if len(reviewers) < 13 {
-	// 				reviewers += "None"
-	// 			}
-	// 			attachment.Text += fmt.Sprintf("Uncompleted PR by: %s\nUrl: %s\n%s", pr.User, pr.PrUrl, reviewers)
-	// 			if attachment.Text != "" {
-	// 				posts.PostMessageWithErrorLogging(client.PostMessage, event.Channel, slack.MsgOptionAttachments(attachment))
-	// 			}
-	// 			if currentColor == red {
-	// 				currentColor = blue
-	// 			} else {
-	// 				currentColor = red
-	// 			}
-	// 		}
-	// 		*hasPosted = true
-	// 	}
-	// } else {
-	// 	*hasPosted = false
-	// }
-
 	return nil
-}
-
-func PostEphemeral(client *slack.Client, channelId string, userId string, silenced bool, options slack.MsgOption) {
-	if !silenced {
-		client.PostEphemeral(channelId, userId, options)
-	}
-}
-
-func inNotificationTime() bool {
-	return time.Now().Hour() == morning || time.Now().Hour() == noon || time.Now().Hour() == evening
-}
-
-func sendSlackNotifications(client *slack.Client, event *slackevents.MessageEvent, currentPRs *[]types.PullRequest, silenced *bool, hasPosted *bool) {
-	if !*silenced && inNotificationTime() {
-		if !*hasPosted {
-			sendNotifications(client, event, currentPRs)
-			*hasPosted = true
-		}
-	} else {
-		*hasPosted = false
-	}
 }
 
 func sendNotifications(client *slack.Client, event *slackevents.MessageEvent, currentPRs *[]types.PullRequest) {
@@ -218,4 +158,25 @@ func sendNotifications(client *slack.Client, event *slackevents.MessageEvent, cu
 			currentColor = red
 		}
 	}
+}
+
+func sendSlackNotifications(client *slack.Client, event *slackevents.MessageEvent, currentPRs *[]types.PullRequest, silenced *bool, hasPosted *bool) {
+	if !*silenced && inNotificationTime() {
+		if !*hasPosted {
+			sendNotifications(client, event, currentPRs)
+			*hasPosted = true
+		}
+	} else {
+		*hasPosted = false
+	}
+}
+
+func PostEphemeral(client *slack.Client, channelId string, userId string, silenced bool, options slack.MsgOption) {
+	if !silenced {
+		client.PostEphemeral(channelId, userId, options)
+	}
+}
+
+func inNotificationTime() bool {
+	return time.Now().Hour() == morning || time.Now().Hour() == noon || time.Now().Hour() == evening
 }
